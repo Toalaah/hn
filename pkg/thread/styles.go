@@ -13,11 +13,11 @@ type Styles struct {
 
 func DefaultStyles() Styles {
 	return Styles{
-		Title:      lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Bold(true).Underline(true),
-		Selected:   lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF")).Bold(true),
-		Unselected: lipgloss.NewStyle().Foreground(lipgloss.Color("#828282")),
-		SubThread:  lipgloss.NewStyle().Foreground(lipgloss.Color("#D1D1D1")),
-		Author:     lipgloss.NewStyle().Bold(true),
+		Title:      lipgloss.NewStyle(),
+		Selected:   lipgloss.NewStyle().Foreground(lipgloss.Color("000")).Background(lipgloss.Color("006")),
+		Unselected: lipgloss.NewStyle().Foreground(lipgloss.Color("007")),
+		SubThread:  lipgloss.NewStyle().Foreground(lipgloss.Color("231")).Bold(true),
+		Author:     lipgloss.NewStyle(),
 		Meta:       lipgloss.NewStyle().Faint(true),
 	}
 }

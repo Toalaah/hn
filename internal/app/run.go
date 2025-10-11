@@ -7,7 +7,13 @@ import (
 )
 
 func Run(t hn.Thread) error {
-	p := tea.NewProgram(thread.NewModel(t), tea.WithAltScreen(), tea.WithMouseCellMotion())
+	m := thread.New(t,
+		thread.WithWidth(80),
+	)
+	p := tea.NewProgram(m,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	)
 	_, err := p.Run()
 	return err
 }

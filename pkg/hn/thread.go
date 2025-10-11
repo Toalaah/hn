@@ -78,6 +78,8 @@ func initNodes(t *Thread) {
 		text = strings.ReplaceAll(text, "\n", " ")
 		text = strings.ReplaceAll(text, "<p>", "\n")
 		text = strings.ReplaceAll(text, "  ", " ")
+		// text = strings.ReplaceAll(text, "href", "\x1B[38;2;249;38;114mhref\x1B[0m")
+
 		text = strings.TrimSpace(text)
 		text = html.UnescapeString(text)
 		cur.Text = text

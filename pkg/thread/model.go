@@ -13,6 +13,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/mergestat/timediff"
+	"github.com/muesli/reflow/padding"
+	"github.com/muesli/reflow/wordwrap"
 	"github.com/toalaah/hn/pkg/hn"
 )
 
@@ -23,13 +25,13 @@ type ThreadI interface {
 	Children() []ThreadI
 }
 
-func NewModel(thread hn.Thread) *Model {
+func New(thread hn.Thread, opts ...Option) *Model {
 	n := thread.NumComments()
 	m := &Model{
 		KeyMap:   DefaultKeyMap(),
 		Styles:   DefaultStyles(),
 		Indent:   2,
-		MaxWidth: 72,
+		MaxWidth: 0,
 
 		curRoot:    nil,
 		thread:     thread,
@@ -39,6 +41,9 @@ func NewModel(thread hn.Thread) *Model {
 	}
 	if len(m.thread.Children) > 0 {
 		m.curRoot = &m.thread.Children[0]
+	}
+	for _, opt := range opts {
+		opt(m)
 	}
 	return m
 }
@@ -65,16 +70,27 @@ func (m *Model) textWidth() int {
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleInput(msg)
+	case tea.MouseMsg:
+		switch tea.MouseEvent(msg).Button {
+		case tea.MouseButtonLeft:
+			m.seekToClosestNextThread(msg.Y)
+		}
 	case tea.WindowSizeMsg:
 		m.viewport.Width = msg.Width
 		padding := 2
 		m.viewport.Height = msg.Height - padding
 		m.viewport.YPosition = 1
+	case ClearStatusMsg:
+		m.lastStatus = ""
 	}
-	return m, nil
+	vp, cmd := m.viewport.Update(msg)
+	m.viewport = vp
+	cmds = append(cmds, cmd)
+	return m, tea.Batch(cmds...)
 }
 
 func (m *Model) viewHeader() string {
@@ -102,6 +118,9 @@ func (m *Model) threadView(t *hn.Thread, selected bool, isThreadChild bool, inde
 	var b strings.Builder
 
 	idx := m.toIndex(t)
+	if m.meta[idx].node == nil {
+		m.meta[idx].node = t
+	}
 	isCollapsed := m.meta[idx].collapsed
 	// base style
 	sty := lipgloss.NewStyle().MarginLeft(indent)
@@ -133,7 +152,8 @@ func (m *Model) threadView(t *hn.Thread, selected bool, isThreadChild bool, inde
 		return b.String()
 	}
 
-	b.WriteString(sty.Width(w).Render(t.Text))
+	text := padding.String(wordwrap.String(t.Text, w), uint(m.viewport.Width))
+	b.WriteString(sty.Render(text))
 	m.meta[idx].height = lipgloss.Height(b.String())
 	b.WriteString("\n")
 
@@ -163,12 +183,18 @@ func (m *Model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if !m.meta[m.toIndex(m.curRoot)].collapsed {
 			if m.curRoot.Parent.Parent != nil {
 				m.curRoot = cmp.Or(m.curRoot.Parent, &m.thread.Children[0])
-				m.seekToCurrentRoot()
 			}
+		} else {
+			m.prevThread()
+			m.seekToCurrentRoot()
 		}
 	case key.Matches(msg, m.KeyMap.Down):
-		if !m.meta[m.toIndex(m.curRoot)].collapsed && len(m.curRoot.Children) > 0 {
+		l := len(m.curRoot.Children)
+		c := m.meta[m.toIndex(m.curRoot)].collapsed
+		if !c && l > 0 {
 			m.curRoot = &m.curRoot.Children[0]
+		} else if c {
+			m.nextThread()
 			m.seekToCurrentRoot()
 		}
 	case key.Matches(msg, m.KeyMap.PageUp):
@@ -220,9 +246,21 @@ func (m *Model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				clipboard.WriteAll(m.curRoot.Text)
 			}
 		}()
-		m.setEphemeralStatus("Contents copied to clipboard", time.Second)
+		m.lastStatus = "Contents copied to clipboard"
+		return m, ClearStatusAfter(time.Second)
 	}
 	return m, nil
+}
+
+func (m *Model) seekToClosestNextThread(y int) {
+	y = y + m.viewport.YOffset
+	lo := 0
+	for i := range m.meta {
+		if lo < y && y < lo+m.meta[i].height {
+			m.curRoot = m.meta[i].node
+		}
+		lo += m.meta[i].height
+	}
 }
 
 func (m *Model) seekToCurrentRoot() {
@@ -253,18 +291,39 @@ func (m *Model) navigateSubThread(n int) {
 func (m *Model) nextThread() { m.navigateSubThread(1) }
 func (m *Model) prevThread() { m.navigateSubThread(-1) }
 
-func (m *Model) setEphemeralStatus(s string, d time.Duration) {
-	m.lastStatus = s
-	go func() {
+type ClearStatusMsg struct{}
+
+func ClearStatusAfter(d time.Duration) tea.Cmd {
+	return func() tea.Msg {
 		time.Sleep(d)
-		m.lastStatus = ""
-	}()
+		return ClearStatusMsg{}
+	}
 }
 
 func (m *Model) defaultStatus() string {
 	numComments := m.thread.NumComments()
 	right := fmt.Sprintf("%d/%d %d%%", m.toIndex(m.curRoot)+1, numComments, int(m.viewport.ScrollPercent()*100))
 	padding := m.viewport.Width - lipgloss.Width(right)
-	left := lipgloss.NewStyle().Width(padding).Render("n:next p:prev j:down k:up q:quit ?:help")
+	left := lipgloss.NewStyle().Width(padding).Render("n:next p:prev j:down k:up q:quit")
 	return left + right
+}
+
+type Option func(*Model)
+
+func WithStyles(s Styles) Option {
+	return func(m *Model) {
+		m.Styles = s
+	}
+}
+
+func WithKeys(k KeyMap) Option {
+	return func(m *Model) {
+		m.KeyMap = k
+	}
+}
+
+func WithWidth(w int) Option {
+	return func(m *Model) {
+		m.MaxWidth = w
+	}
 }

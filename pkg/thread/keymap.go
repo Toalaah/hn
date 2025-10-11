@@ -46,6 +46,7 @@ type KeyMap struct {
 type threadMetadata struct {
 	collapsed bool
 	height    int
+	node      *hn.Thread
 }
 
 type Model struct {
