@@ -2,18 +2,20 @@ package app
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/toalaah/hn/pkg/hn"
-	"github.com/toalaah/hn/pkg/thread"
+	"github.com/toalaah/hn/pkg/threadview"
 )
 
-func Run(t hn.Thread) error {
-	m := thread.New(t,
-		thread.WithWidth(80),
+func Run(t threadview.Thread) error {
+	m, err := threadview.New(t,
+		threadview.WithHeadSelectable(false),
+		threadview.WithHideCollapsedChildren(true),
 	)
-	p := tea.NewProgram(m,
+	if err != nil {
+		return err
+	}
+	_, err = tea.NewProgram(m,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
-	)
-	_, err := p.Run()
+	).Run()
 	return err
 }

@@ -3,113 +3,87 @@ package hn
 import (
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
-	"time"
+
+	"github.com/toalaah/hn/pkg/threadview"
 )
 
-// Represents a HN thread.
-type Thread struct {
-	ID       int       `json:"id"`
-	Author   string    `json:"author"`
-	Date     time.Time `json:"created_at"`
-	Text     string    `json:"text"`
-	Parent   *Thread   `json:"-"`
-	Title    string    `json:"title,omitempty"`
-	URL      *url.URL  `json:"url"`
-	Points   int       `json:"points"`
-	Children []Thread  `json:"children"`
+func (t *Story) ID() int                           { return t.Id }
+func (t *Story) Parent() (threadview.Thread, bool) { return t.parent, t.parent != nil }
+func (t *Story) Children() []threadview.Thread {
+	res := make([]threadview.Thread, len(t.Children_))
+	for i := range t.Children_ {
+		res[i] = &t.Children_[i]
+	}
+	return res
 }
 
-func (t *Thread) NumComments() int {
-	var numCommentsFromNode func(tt *Thread) int
-	numCommentsFromNode = func(tt *Thread) int {
-		i := 1
-		for _, cc := range tt.Children {
-			i += numCommentsFromNode(&cc)
-		}
-		return i
+func (t *Story) Text() string {
+	var b strings.Builder
+	for _, p := range t.textParts {
+		b.WriteString(p.Text)
 	}
-	i := 0
-	for _, c := range t.Children {
-		i += numCommentsFromNode(&c)
-	}
-	return i
+	return b.String()
 }
 
-func dfs(root, cur *Thread, f func(root, cur *Thread)) {
+func dfs(root, cur *Story, f func(root, cur *Story)) {
 	f(root, cur)
-	for i := range cur.Children {
-		dfs(cur, &cur.Children[i], f)
+	for i := range cur.Children_ {
+		dfs(cur, &cur.Children_[i], f)
 	}
 }
 
-func (t *Thread) CommentIndex(target *Thread) (int, bool) {
-	return commentIndex(t, target, 0)
+func (t *Story) CommentIndex(target threadview.Thread) (int, bool) {
+	return commentIndex(t, target.(*Story), 0)
 }
 
-func commentIndex(cur, target *Thread, n int) (int, bool) {
+func commentIndex(cur, target *Story, n int) (int, bool) {
 	if cur == target {
 		return n, true
 	}
 	found := false
-	acc := 0
-	for i := range cur.Children {
-		if n, found = commentIndex(&cur.Children[i], target, n+1); found {
+	for i := range cur.Children_ {
+		if n, found = commentIndex(&cur.Children_[i], target, n+1); found {
 			return n, found
 		}
-		acc += n
 	}
 	return n, false
 }
 
-func initNodes(t *Thread) {
-	dfs(nil, t, func(root, cur *Thread) {
-		cur.Parent = root
-		text, err := strconv.Unquote("`" + cur.Text + "`")
-		if err != nil {
-			text = cur.Text
-		}
-		text = strings.ReplaceAll(text, "\\n", "\n")
-		text = strings.ReplaceAll(text, "\n", " ")
-		text = strings.ReplaceAll(text, "<p>", "\n")
-		text = strings.ReplaceAll(text, "  ", " ")
-		// text = strings.ReplaceAll(text, "href", "\x1B[38;2;249;38;114mhref\x1B[0m")
-
-		text = strings.TrimSpace(text)
-		text = html.UnescapeString(text)
-		cur.Text = text
+func initNodes(t *Story) {
+	dfs(nil, t, func(root, cur *Story) {
+		cur.parent = root
+		cur.textParts = parseMarkupToBlocks(cur.TextRaw)
 	})
 }
 
-func NewThreadFromData(body []byte) (Thread, error) {
-	t := Thread{}
+func NewThreadFromData(body []byte) (*Story, error) {
+	t := &Story{}
 	if err := json.Unmarshal(body, &t); err != nil {
-		return Thread{}, err
+		return nil, err
 	}
-	initNodes(&t)
+	initNodes(t)
 	return t, nil
 }
 
-func NewThread(id int) (Thread, error) {
+func NewThread(id int) (*Story, error) {
 	resp, err := http.Get(fmt.Sprintf("https://hn.algolia.com/api/v1/items/%d", id))
 	if err != nil {
-		return Thread{}, err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return Thread{}, err
+		return nil, err
 	}
 	return NewThreadFromData(body)
 }
 
-func (t *Thread) UnmarshalJSON(data []byte) error {
-	type Dummy Thread
+func (t *Story) UnmarshalJSON(data []byte) error {
+	type Dummy Story
 
 	tmp := struct {
 		URL string `json:"url"`
@@ -122,7 +96,7 @@ func (t *Thread) UnmarshalJSON(data []byte) error {
 
 	if url, err := url.Parse(tmp.URL); err != nil {
 		return err
-	} else {
+	} else if url.Scheme != "" {
 		t.URL = url
 	}
 
