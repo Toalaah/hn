@@ -57,7 +57,7 @@ func (t *Story) CommentView() string {
 		relDate := fmt.Sprintf("(%s)", timediff.TimeDiff(t.Date))
 		numComments := "[-]"
 		if t.state.Collapsed {
-			numComments = fmt.Sprintf("[%d more]", threadview.NumNodes(t)+1)
+			numComments = fmt.Sprintf("[%d more]", threadview.NumNodes(t))
 		}
 		header := TextBlocks{
 			{Type: BlockTypeAuthor, Text: t.Author},
@@ -67,10 +67,16 @@ func (t *Story) CommentView() string {
 			{Type: BlockTypeMetadata, Text: numComments},
 			{Type: BlockTypeText, Text: "\n"},
 		}
+		// Trim newline if comment is collapsed
+		if t.state.Collapsed {
+			header = header[:len(header)-1]
+		}
 		b.WriteString(header.Render(t.state))
 	}
 	// Comment text
-	b.WriteString(TextBlocks(t.textParts).Render(t.state))
+	if !t.state.Collapsed {
+		b.WriteString(TextBlocks(t.textParts).Render(t.state))
+	}
 	return b.String()
 }
 

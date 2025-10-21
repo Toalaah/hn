@@ -150,7 +150,7 @@ func (m *Model) threadView(t Thread, state DisplayStateMsg) string {
 		m.meta[idx].height = lipgloss.Height(s)
 	}
 	b.WriteString("\n")
-	if state.Collapsed {
+	if state.Collapsed && m.hideCollapsedChildren {
 		return b.String()
 	}
 	state.Depth++
@@ -190,7 +190,9 @@ func (m *Model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, m.KeyMap.Prev):
 		m.prevThread()
 	case key.Matches(msg, m.KeyMap.Root):
-		panic("unimplemented")
+		for p, ok := m.curRoot.Parent(); ok && !(p == m.head && !m.headSelectable); p, ok = m.curRoot.Parent() {
+			m.curRoot = p
+		}
 	case key.Matches(msg, m.KeyMap.ToggleFold):
 		i := m.threadIndex(m.curRoot)
 		m.meta[i].collapsed = !m.meta[i].collapsed
