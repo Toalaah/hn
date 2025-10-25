@@ -2,6 +2,7 @@ package hn
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -71,6 +72,9 @@ func NewThreadFromData(body []byte) (*Story, error) {
 
 func NewThread(id int) (*Story, error) {
 	resp, err := http.Get(fmt.Sprintf("https://hn.algolia.com/api/v1/items/%d", id))
+	if resp.StatusCode < 200 || resp.StatusCode > 299 {
+		return nil, errors.New(resp.Status)
+	}
 	if err != nil {
 		return nil, err
 	}
