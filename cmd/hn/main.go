@@ -24,7 +24,8 @@ func main() {
 		}
 	}
 
-	if id == 0 {
+	switch id {
+	case 0:
 		f, err := os.Open("./hn.json")
 		if err != nil {
 			fmt.Printf("Error opening file: %s\n", err)
@@ -41,7 +42,7 @@ func main() {
 			fmt.Printf("Error fetching thread: %s\n", err)
 			os.Exit(1)
 		}
-	} else {
+	default:
 		t, err = hn.NewThread(id)
 		if err != nil {
 			fmt.Printf("Error fetching thread: %s\n", err)

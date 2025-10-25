@@ -30,6 +30,7 @@ type Model struct {
 type metadata struct {
 	node      Thread
 	collapsed bool
+	visible   bool
 	height    int
 }
 
@@ -64,7 +65,12 @@ func New(t Thread, opts ...Option) (*Model, error) {
 
 	i := 0
 	dfs(nil, m.head, func(root, cur Thread) {
-		m.meta[i].node = cur
+		m.meta[i] = metadata{
+			visible:   true,
+			node:      cur,
+			collapsed: false,
+			height:    0,
+		}
 		i++
 	})
 
@@ -94,7 +100,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.handleInput(msg)
 	case tea.MouseMsg:
 		if tea.MouseEvent(msg).Button == tea.MouseButtonLeft {
-			panic("unimplemented")
+			m.curRoot = m.getThreadFromYPos(msg.Y)
 		}
 	case tea.WindowSizeMsg:
 		padding := 1
@@ -125,7 +131,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) View() string {
 	threads := m.threadView(m.head, DisplayStateMsg{
 		Collapsed: m.meta[m.threadIndex(m.head)].collapsed,
-		Selected:  m.curRoot.ID() == m.head.ID(),
+		Selected:  m.curRoot == m.head,
 		Subthread: false,
 		Depth:     0,
 		Width:     m.viewport.Width,
@@ -140,9 +146,12 @@ func (m *Model) threadView(t Thread, state DisplayStateMsg) string {
 	var b strings.Builder
 
 	idx := m.threadIndex(t)
+	if !m.meta[idx].visible {
+		return ""
+	}
+
 	t.Update(state)
 	s := t.View()
-
 	if s == "" {
 		m.meta[idx].height = 0
 	} else {
@@ -150,18 +159,21 @@ func (m *Model) threadView(t Thread, state DisplayStateMsg) string {
 		m.meta[idx].height = lipgloss.Height(s)
 	}
 	b.WriteString("\n")
-	if state.Collapsed && m.hideCollapsedChildren {
-		return b.String()
-	}
+
 	state.Depth++
 	state.Subthread = cmp.Or(state.Subthread, state.Selected)
+	visible := !(m.hideCollapsedChildren && state.Collapsed)
 	children := t.Children()
 	for _, c := range children {
+		cidx := m.threadIndex(c)
+		m.meta[cidx].visible = visible
 		state.Selected = c == m.curRoot
-		state.Collapsed = m.meta[m.threadIndex(c)].collapsed
+		state.Collapsed = m.meta[cidx].collapsed
 		s := m.threadView(c, state)
+
 		b.WriteString(s)
 	}
+
 	return b.String()
 }
 
@@ -195,7 +207,13 @@ func (m *Model) handleInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case key.Matches(msg, m.KeyMap.ToggleFold):
 		i := m.threadIndex(m.curRoot)
-		m.meta[i].collapsed = !m.meta[i].collapsed
+		c := m.meta[i].collapsed
+		m.meta[i].collapsed = !c
+		if m.hideCollapsedChildren {
+			dfs(nil, m.curRoot, func(root, cur Thread) {
+				m.meta[m.threadIndex(cur)].visible = c
+			})
+		}
 	case key.Matches(msg, m.KeyMap.ResetView):
 		m.seekToCurrentRoot()
 	case key.Matches(msg, m.KeyMap.Copy):
@@ -213,6 +231,23 @@ func (m *Model) getYOffsetForThread(t Thread) int {
 		y += m.meta[i].height
 	}
 	return y
+}
+
+func (m *Model) getThreadFromYPos(y int) Thread {
+	y = y + m.viewport.YOffset
+	lo, hi := 0, 0
+	for _, m := range m.meta {
+		if !m.visible {
+			continue
+		}
+		hi += m.height
+		if lo <= y && y < hi {
+			return m.node
+		}
+		lo = hi
+	}
+	// Should never happen
+	return m.curRoot
 }
 
 func (m *Model) seekToCurrentRoot() {
@@ -259,11 +294,15 @@ func ClearStatusAfter(d time.Duration) tea.Cmd {
 }
 
 func (m *Model) defaultStatus() string {
+	numNodes := m.numNodes
+	if !m.headSelectable {
+		numNodes--
+	}
 	right := fmt.Sprintf("(%d rows) #%d %d/%d %d%%",
 		m.meta[m.threadIndex(m.curRoot)].height,
 		m.curRoot.ID(),
 		m.threadIndex(m.curRoot),
-		m.numNodes, // Head is "virtual"
+		numNodes, // Head is "virtual"
 		int(m.viewport.ScrollPercent()*100),
 	)
 	left := fmt.Sprintf(
@@ -282,7 +321,7 @@ func (m *Model) defaultStatus() string {
 func (m *Model) threadIndex(t Thread) int {
 	for i := range m.meta {
 		node := m.meta[i].node
-		if node != nil && node.ID() == t.ID() {
+		if node != nil && node == t {
 			return i
 		}
 	}

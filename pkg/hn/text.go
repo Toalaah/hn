@@ -53,7 +53,7 @@ var textStyles = struct {
 }{
 	Text:       TextStyle{color.Set(color.FgWhite), nil},
 	Link:       TextStyle{color.Set(color.FgRed), nil},
-	Quote:      TextStyle{color.Set(color.Faint), nil},
+	Quote:      TextStyle{color.Set(color.Faint), color.Set(color.FgYellow)},
 	Author:     TextStyle{color.Set(color.FgHiYellow, color.Bold), nil},
 	Metadata:   TextStyle{color.Set(color.Faint), color.Set(color.FgWhite)},
 	SelectedBg: color.Set(color.BgBlue),
@@ -132,7 +132,9 @@ func parseMarkupToBlocks(s string) []TextBlock {
 				state = BlockTypeText
 				parts = append(parts, TextBlock{BlockTypeText, "\n"})
 			case "i":
-				state = BlockTypeItalic
+				if state == BlockTypeText {
+					state = BlockTypeItalic
+				}
 			case "a":
 				state = BlockTypeLink
 			case "pre":
