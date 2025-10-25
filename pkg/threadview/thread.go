@@ -13,12 +13,3 @@ type Thread interface {
 	// Children returns a list of this thread's sub-threads i.e children.
 	Children() []Thread
 }
-
-type head struct{ children []Thread }
-
-func (h head) Init() tea.Cmd                       { return nil }
-func (h head) View() string                        { return "" }
-func (h head) Update(tea.Msg) (tea.Model, tea.Cmd) { return h, nil }
-func (h head) ID() int                             { return 0 }
-func (h head) Parent() (Thread, bool)              { return nil, false }
-func (h head) Children() []Thread                  { return h.children }
